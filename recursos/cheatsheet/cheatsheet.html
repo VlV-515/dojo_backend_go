@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cheatsheet Backend Go</title>
+<style>
+  @page { size: Letter landscape; margin: 9mm 9mm 11mm 9mm; }
+  :root {
+    --tinta: #1d2330; --suave: #5b6475; --linea: #d8dce4;
+    --azul: #1f5fae; --azul-f: #e8f0fb;
+    --rojo: #b42318; --rojo-f: #fdecea;
+    --verde: #1d7a4a; --verde-f: #e7f5ee;
+    --ambar: #9a5b00; --ambar-f: #fff4e0;
+    --code-f: #f3f4f7;
+  }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { margin: 0; background: #fff; color: var(--tinta); }
+  body { font: 7.4pt/1.32 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .cabecera { display: flex; justify-content: space-between; align-items: flex-end;
+    border-bottom: 2px solid var(--tinta); padding-bottom: 4px; margin-bottom: 6px; }
+  .cabecera h1 { font-size: 15pt; margin: 0; letter-spacing: -0.2px; }
+  .cabecera .sub { color: var(--suave); font-size: 7.6pt; text-align: right; }
+  .cols { column-count: 4; column-gap: 7px; column-fill: auto; }
+  .tarjeta { break-inside: avoid; border: 1px solid var(--linea); border-radius: 4px;
+    padding: 4px 5px 5px; margin: 0 0 6px; background: #fff; }
+  .tarjeta h2 { font-size: 8.4pt; margin: -4px -5px 4px; padding: 3px 5px; border-radius: 3px 3px 0 0;
+    background: var(--tinta); color: #fff; letter-spacing: 0.2px; }
+  .tarjeta h2 small { font-weight: normal; opacity: .75; }
+  .t-go h2 { background: #00788f; } .t-web h2 { background: #6941c6; }
+  .t-db h2 { background: #1d7a4a; } .t-docker h2 { background: #1f5fae; }
+  .t-arq h2 { background: #b54708; } .t-seg h2 { background: var(--rojo); }
+  .t-dojo h2 { background: #344054; }
+  h3 { font-size: 7.6pt; margin: 4px 0 2px; color: var(--azul); }
+  p { margin: 2px 0; }
+  ul { margin: 2px 0; padding-left: 11px; } li { margin: 1px 0; }
+  code, pre { font-family: Menlo, "SF Mono", Consolas, monospace; font-size: 6.6pt; }
+  code { background: var(--code-f); padding: 0 2px; border-radius: 2px; }
+  pre { background: var(--code-f); margin: 2px 0; padding: 3px 4px; border-radius: 3px;
+    white-space: pre-wrap; word-break: break-word; line-height: 1.28; }
+  pre .c { color: #6b7280; }
+  table { width: 100%; border-collapse: collapse; margin: 2px 0; }
+  th, td { text-align: left; vertical-align: top; padding: 1.5px 3px; border-bottom: 1px solid var(--linea); }
+  th { font-size: 6.9pt; color: var(--suave); font-weight: 600; }
+  td code { font-size: 6.4pt; }
+  .alerta { background: var(--rojo-f); border-left: 3px solid var(--rojo); padding: 2px 4px; margin: 3px 0; }
+  .ok { background: var(--verde-f); border-left: 3px solid var(--verde); padding: 2px 4px; margin: 3px 0; }
+  .nota { background: var(--ambar-f); border-left: 3px solid var(--ambar); padding: 2px 4px; margin: 3px 0; }
+  .pie { position: fixed; bottom: -7mm; left: 0; right: 0; font-size: 6.4pt; color: var(--suave);
+    display: flex; justify-content: space-between; }
+  .salto { break-before: column; }
+</style>
+</head>
+<body>
+
+<div class="cabecera">
+  <div>
+    <h1>Cheatsheet Backend Go</h1>
+    <div style="color:var(--suave)">Go · Gin · Swagger · Postgres/GORM · Migraciones · Docker · Hexagonal · Librerías compartidas · Seguridad · CI/CD</div>
+  </div>
+  <div class="sub">Dojo Backend Go · <code>github.com/VlV-515/dojo_backend_go</code><br>
+  Sin secretos: un buen equipo documenta <b>dónde viven</b>, nunca su valor.</div>
+</div>
+<div class="pie"><span>Cheatsheet Backend Go · Dojo Backend Go · Licencia MIT · Rev. 2026-11-01 · fuente: recursos/cheatsheet/cheatsheet.html · regenerar: python generar.py</span></div>
+
+<div class="cols">
+
+<!-- =============================== EQUIPO ================================= -->
+<div class="tarjeta t-seg">
+  <h2>Reglas de oro (no se rompen)</h2>
+  <ul>
+    <li><b>Bases de dev/staging son compartidas.</b> Nada de <code>POST/PUT/DELETE</code> ni migraciones contra ellas sin que el equipo lo pida.</li>
+    <li><b>Producción jamás</b> desde tu máquina: solo por el pipeline.</li>
+    <li>Migraciones automáticas al arrancar <b>apagadas</b> cuando apuntas a una base compartida.</li>
+    <li><code>config.json</code>, <code>certs/</code>, <code>.env</code>, binarios y <code>docs/</code> (swag) <b>nunca</b> en commits. Verifica: <code>git check-ignore -v &lt;archivo&gt;</code>.</li>
+    <li>No apagues la autenticación "para probar rápido": se te olvida prenderla.</li>
+    <li>Si tu servicio <b>consume</b> una cola compartida, no lo conectes desde local: le robas mensajes al entorno.</li>
+    <li><code>example:</code> de Swagger nunca con valores reales.</li>
+  </ul>
+</div>
+
+<div class="tarjeta t-arq">
+  <h2>Mapa de un backend de microservicios</h2>
+  <table data-w="22,78">
+    <tr><th>Entorno</th><th>Para qué</th></tr>
+    <tr><td><b>local</b></td><td>tu máquina; bases propias en Docker, rompe lo que quieras</td></tr>
+    <tr><td><b>dev / staging</b></td><td>probar ramas y QA; bases <b>compartidas</b></td></tr>
+    <tr><td>production</td><td>clientes reales; solo vía pipeline</td></tr>
+  </table>
+  <table data-w="22,42,36">
+    <tr><th>Recurso</th><th>Desde tu máquina</th><th>Dentro de docker</th></tr>
+    <tr><td>Postgres</td><td><code>&lt;host público&gt;:&lt;puerto publicado&gt;</code></td><td><code>dbpostgres:5432</code></td></tr>
+    <tr><td>Rabbit</td><td><code>&lt;host&gt;:&lt;puerto publicado&gt;</code></td><td><code>rabbit:5672</code></td></tr>
+    <tr><td>HTTP</td><td><code>https://&lt;svc&gt;.&lt;dominio&gt;</code></td><td><code>http://&lt;servicio&gt;</code></td></tr>
+  </table>
+  <p>Los alias de la red docker <b>no resuelven</b> fuera del servidor: en local cambia alias por host público.</p>
+  <h3>Repos típicos</h3>
+  <ul>
+    <li><code>servicio-&lt;dominio&gt;</code>: un microservicio por dominio (auth, pedidos, inventarios…).</li>
+    <li><code>libs</code>/<code>platform</code>: librería compartida privada (errores, config, auth, mensajería).</li>
+    <li><code>infra</code>/<code>deploy</code>: compose, configs por entorno, pipelines.</li>
+  </ul>
+</div>
+
+<div class="tarjeta t-arq">
+  <h2>Levantar un servicio Go ajeno: checklist</h2>
+  <table data-w="5,23,72">
+    <tr><th>#</th><th>Paso</th><th>Comando clave / éxito</th></tr>
+    <tr><td>1</td><td>Acceso</td><td><code>go env -w GOPRIVATE=github.com/tu-org/*</code> · <code>git ls-remote https://github.com/tu-org/libs.git</code></td></tr>
+    <tr><td>2</td><td>Dependencias</td><td><code>go mod download</code> · <code>go install github.com/swaggo/swag/cmd/swag@&lt;ver go.mod&gt;</code> · <code>swag init -g &lt;main&gt;.go</code> · <code>go build ./...</code></td></tr>
+    <tr><td>3</td><td>Config</td><td><code>cp config.example.json config.json</code>; alias docker -&gt; hosts reales; migraciones automáticas off; <code>python3 -m json.tool config.json</code></td></tr>
+    <tr><td>4</td><td>Certificados</td><td>si la base exige TLS: <code>ca.crt</code>/<code>client.crt</code>/<code>client.key</code> fuera de git, <code>chmod 600</code> a la llave</td></tr>
+    <tr><td>5</td><td>Red</td><td><code>nc -vz -w 5 &lt;host&gt; &lt;puerto&gt;</code> a cada dependencia</td></tr>
+    <tr><td>6</td><td>Conexión</td><td><code>go run &lt;main&gt;.go migrate status</code> (solo lee)</td></tr>
+    <tr><td>7</td><td>Arranque</td><td><code>go run &lt;main&gt;.go</code> -&gt; <code>Listening and serving HTTP on :&lt;puerto&gt;</code> · <code>curl</code> a una ruta pública</td></tr>
+  </table>
+<pre><span class="c"># inspeccionar certificados (LibreSSL en macOS no tiene -ext)</span>
+openssl x509 -in client.crt -noout -subject
+openssl x509 -in ca.crt -noout -text | grep -A1 "Subject Alternative Name"
+<span class="c"># cargar variables de un .env en la terminal actual</span>
+set -a; source .env; set +a</pre>
+</div>
+
+<!-- =============================== TERMINAL / GIT ================================= -->
+<div class="tarjeta">
+  <h2>Terminal y diagnóstico</h2>
+<pre>pwd; ls -la; cd -              <span class="c"># dónde estoy / qué hay / regresar</span>
+grep -rn "txOrDB" src/          <span class="c"># buscar en código</span>
+find . -name "*_test.go" | wc -l
+tail -f app.log | grep -i error
+lsof -i :1099                   <span class="c"># quién usa el puerto</span>
+kill &lt;PID&gt;
+nc -vz -w 5 host 5432           <span class="c"># ¿hay red?</span>
+curl -s -i localhost:1099/salud <span class="c"># -i muestra código y headers</span>
+curl -s -X POST -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -d '{"a":1}' URL
+export VAR=valor; echo $VAR     <span class="c"># solo vive en ESTA terminal</span>
+chmod 600 archivo; ls -l archivo
+python3 -m json.tool config.json  <span class="c"># validar JSON</span></pre>
+</div>
+
+<div class="tarjeta">
+  <h2>Git y convenciones del equipo</h2>
+<pre>git switch -c feature/123-alta-cajas develop
+git status; git diff; git diff --staged
+git add -p                         <span class="c"># preparar por partes</span>
+git commit -m "feat(cajas): alta de cajas (#123)"
+git fetch origin &amp;&amp; git rebase origin/develop
+git stash / git stash pop
+git log --oneline --graph -15
+git restore archivo.go             <span class="c"># descartar cambios locales</span>
+git check-ignore -v config.json</pre>
+  <p><b>Conventional Commits:</b> <code>feat</code> <code>fix</code> <code>refactor</code> <code>perf</code> <code>docs</code> <code>test</code> <code>chore</code> · Ramas <code>feature/&lt;ticket&gt;-slug</code> desde <code>develop</code> (o <code>main</code>) · PR pequeño.</p>
+  <div class="nota">Lo que entra a git se queda en el historial: borrar un secreto en el siguiente commit <b>no</b> lo arregla; hay que rotarlo.</div>
+</div>
+
+<!-- =============================== GO ================================= -->
+<div class="tarjeta t-go">
+  <h2>Go: herramienta</h2>
+<pre>go build ./...                 <span class="c"># compilar todo</span>
+go vet ./...                   <span class="c"># en cero</span>
+gofmt -l .                     <span class="c"># sin salida = formateado</span>
+go test ./... -v -race
+go test ./pkg/ -run TestX -v   <span class="c"># un test</span>
+go test -tags reto_caja ./...  <span class="c"># incluye //go:build reto_caja</span>
+go test -cover ./...
+go mod download                <span class="c"># tidy borra docs/ si no existe: swag primero</span>
+go env GOPRIVATE GOMODCACHE
+go doc fmt.Errorf</pre>
+  <p>Módulo = <code>go.mod</code> · paquete = carpeta · <b>Mayúscula</b> = exportado.</p>
+</div>
+
+<div class="tarjeta t-go">
+  <h2>Go: lo básico que más se usa</h2>
+<pre>x := 10; var s string; const Max = 3
+<span class="c">// valor cero: 0, "", false, nil (map nil: leer ok, escribir PANIC)</span>
+xs := []int{1, 2}; xs = append(xs, 3)    <span class="c">// siempre reasignar</span>
+vacio := make([]T, 0, n)                 <span class="c">// JSON: [] y no null</span>
+m := map[string]int{}; v, ok := m["k"]; delete(m, "k")
+for i, v := range xs { }   for k, v := range m { }
+switch tipo { case "A", "B": ... default: ... }
+
+type Almacen struct { ID uint; Clave string }
+func (a Almacen) Etiqueta() string { ... }   <span class="c">// valor: copia</span>
+func (a *Almacen) Activar()        { ... }   <span class="c">// puntero: modifica</span>
+func NewX(dep Dep) *X { return &amp;X{dep: dep} }
+
+s = strings.TrimSpace(strings.ToUpper(s))
+n, err := strconv.Atoi("12"); id, err := strconv.ParseUint(p, 10, 64)
+fmt.Sprintf("%s %d %v %+v %q", ...)
+defer f.Close()                               <span class="c">// al salir de la función</span></pre>
+</div>
+
+<div class="tarjeta t-go">
+  <h2>Go: errores</h2>
+<pre>var ErrNoExiste = errors.New("no existe")      <span class="c">// centinela</span>
+return fmt.Errorf("almacén %d: %w", id, err)   <span class="c">// %w envuelve</span>
+if errors.Is(err, ErrNoExiste) { }              <span class="c">// busca VALOR</span>
+var e *MiError; if errors.As(err, &amp;e) { e.Codigo } <span class="c">// busca TIPO</span>
+func (e *MiError) Unwrap() error { return e.Causa }</pre>
+  <ul>
+    <li>Revisa <code>err</code> justo después de la llamada. Nunca compares por texto.</li>
+    <li>Entre capas, envuelve con contexto (<code>%w</code> o la librería de errores del equipo), no <code>return err</code> crudo.</li>
+  </ul>
+</div>
+
+<div class="tarjeta t-go">
+  <h2>Go: interfaces, context, concurrencia, genéricos</h2>
+<pre>type AlmacenReader interface {                  <span class="c">// PUERTO chico</span>
+  PorID(ctx context.Context, id uint) (*models.Almacen, error)
+}
+var _ AlmacenReader = (*AlmacenRepositoryImpl)(nil) <span class="c">// chequeo en compilación</span>
+
+ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+defer cancel()                                  <span class="c">// SIEMPRE</span>
+select { case r := &lt;-ch: ...; case &lt;-ctx.Done(): return ctx.Err() }
+<span class="c">// en gin: ctx.Request.Context()</span>
+
+ch := make(chan T, 1)        <span class="c">// buffer 1: la goroutine no se queda colgada</span>
+var wg sync.WaitGroup; wg.Add(1); go func(){ defer wg.Done() }(); wg.Wait()
+var mu sync.Mutex; mu.Lock(); defer mu.Unlock()
+
+func Mapear[T, U any](xs []T, f func(T) U) []U { ... }</pre>
+  <ul>
+    <li>Gin atiende cada petición en su goroutine: estado compartido con <code>Mutex</code>. Detecta carreras con <code>-race</code>.</li>
+    <li>En servicios, envuelve <code>go func(){}</code> en un helper que <b>recupere pánicos</b>, propague el <code>ctx</code> (TraceID) y tenga timeout.</li>
+  </ul>
+</div>
+
+<div class="tarjeta t-go">
+  <h2>Go: tests (estilo del equipo)</h2>
+<pre>func TestRegistrar(t *testing.T) {
+  casos := []struct{ nombre string; entra models.X; codigo int }{
+    {"válido", models.X{...}, 0},
+    {"sin nombre", models.X{}, http.StatusBadRequest},
+  }
+  for _, c := range casos {
+    t.Run(c.nombre, func(t *testing.T) {
+      repo := nuevoFalso()                      <span class="c">// fake en memoria</span>
+      svc := NewXService(repo, repo, &amp;uowFalso{})
+      err := svc.Registrar(context.Background(), &amp;c.entra)
+      if c.codigo != 0 &amp;&amp; !apperr.IsCode(err, c.codigo) { t.Fatalf(...) }
+    })
+  }
+}
+<span class="c">// HTTP sin abrir puertos</span>
+req := httptest.NewRequest(http.MethodGet, "/x", nil)
+rec := httptest.NewRecorder(); router.ServeHTTP(rec, req) <span class="c">// rec.Code, rec.Body</span></pre>
+  <ul>
+    <li><code>t.Errorf</code> sigue · <code>t.Fatalf</code> corta · <code>t.Helper()</code> en utilerías.</li>
+    <li>Fake = implementa el puerto y <b>registra</b> qué se pidió (<code>escrituras []string</code>).</li>
+    <li>Tests de integración que hacen <code>Skip</code> sin <code>TEST_DSN</code>: un <code>ok</code> todo en Skip no verificó nada. Usa <code>-v</code>.</li>
+  </ul>
+</div>
+
+<!-- =============================== WEB ================================= -->
+<div class="tarjeta t-web">
+  <h2>HTTP: códigos</h2>
+  <table data-w="13,30,10,47">
+    <tr><td><b>200/201</b></td><td>OK / creado</td><td><b>401</b></td><td>sin token o token inválido</td></tr>
+    <tr><td><b>400</b></td><td>datos inválidos</td><td><b>403</b></td><td>sin permiso (rol/política)</td></tr>
+    <tr><td><b>404</b></td><td>no existe</td><td><b>409</b></td><td>duplicado / estado inválido</td></tr>
+    <tr><td><b>500</b></td><td>error nuestro</td><td><b>503</b></td><td>dependencia caída</td></tr>
+  </table>
+  <p>GET consulta · POST crea · PUT/PATCH modifica (el borrado lógico suele ser PUT) · DELETE borra.</p>
+</div>
+
+<div class="tarjeta t-web">
+  <h2>Gin</h2>
+<pre>r := gin.New(); r.Use(gin.Logger(), gin.Recovery())
+g := r.Group("almacenes")
+g.GET("", ctrl.GetAll)          <span class="c">// c.Query("activos")</span>
+g.GET("/:id", ctrl.GetByID)     <span class="c">// c.Param("id")</span>
+g.POST("", ctrl.Alta)
+
+type AltaDTO struct {
+  Clave string `json:"clave" binding:"required" example:"ALM-01"`
+}
+var req AltaDTO
+if err := c.ShouldBindJSON(&amp;req); err != nil { <span class="c">/* 400 */</span> }
+c.JSON(http.StatusOK, gin.H{"k": v})
+
+func Mw() gin.HandlerFunc { return func(c *gin.Context) {
+  if malo { c.AbortWithStatusJSON(401, ...); return }
+  c.Next() } }</pre>
+  <div class="alerta"><b>Orden load-bearing:</b> <code>r.Use(mw)</code> solo afecta rutas registradas <b>después</b>. Patrón: swagger y rutas públicas -&gt; <code>Use(auth)</code> -&gt; rutas protegidas. Todo lo registrado antes del middleware = público. Congela el inventario de rutas con un test.</div>
+  <p><b>Handler:</b> bind -&gt; mapper DTO a modelo -&gt; service -&gt; <code>general.Responder</code>. Sin reglas de negocio ni SQL. <code>binding:"required"</code> acepta <code>"  "</code>: recortar va en el service.</p>
+</div>
+
+<div class="tarjeta t-web">
+  <h2>Swagger (swaggo)</h2>
+<pre>// Alta godoc
+// @Summary   Registra un almacén
+// @Tags      almacenes
+// @Accept    json
+// @Produce   json
+// @Security  BearerToken
+// @Param     almacen body dtos.AlmacenAltaDTO true "Almacén"
+// @Param     id path int true "ID"    |  activos query bool false "Solo activos"
+// @Success   201 {object} dtos.RespuestaAlmacen
+// @Failure   400 {object} dtos.RespuestaError
+// @Router    /almacenes [post]</pre>
+  <ul>
+    <li><code>docs/</code> es generado y <b>no se versiona</b>; el main lo importa (<code>_ ".../docs"</code>). Clon limpio: <code>no required module provides package .../docs</code> -&gt; <code>swag init -g &lt;main&gt;.go</code>.</li>
+    <li><code>swag</code> en la <b>misma versión</b> que <code>go.mod</code> (si no: <code>unknown field LeftDelim</code>).</li>
+    <li>Regenera tras tocar handlers/DTOs. UI: <code>/swagger/index.html</code>.</li>
+  </ul>
+</div>
+
+<!-- =============================== DB ================================= -->
+<div class="tarjeta t-db">
+  <h2>GORM v2: trampas</h2>
+  <table data-w="36,30,34">
+    <tr><th>Haces</th><th>Pasa</th><th>Haz</th></tr>
+    <tr><td><code>Find</code> y esperas <code>ErrRecordNotFound</code></td><td>nunca llega; 404 muerto</td><td><code>First</code>, o <code>RowsAffected == 0</code></td></tr>
+    <tr><td><code>Updates(struct)</code></td><td>ignora <code>false</code>, <code>0</code>, <code>""</code></td><td><code>Updates(map[string]any{...})</code> o <code>Select</code></td></tr>
+    <tr><td><code>"id = " + id</code></td><td>inyección SQL</td><td><code>Where("id = ?", id)</code></td></tr>
+    <tr><td><code>Rollback()</code> en el <code>*gorm.DB</code> raíz</td><td><i>invalid transaction</i> en todo el servicio hasta reiniciar</td><td>solo <code>uow.Do</code></td></tr>
+    <tr><td>Deducir tipo de columna por el struct</td><td>el esquema viene de migraciones</td><td>lee el <code>.sql</code></td></tr>
+  </table>
+<pre>txOrDB(ctx, r.db).Where("id = ?", id).First(&amp;x)
+txOrDB(ctx, r.db).Preload("Valores").Where(...).Find(&amp;lista)
+txOrDB(ctx, r.db).Create(&amp;x)
+txOrDB(ctx, r.db).Model(&amp;X{}).Where("id = ?", id).Updates(map[string]any{"activo": false})
+txOrDB(ctx, r.db).Model(&amp;X{}).Where(...).Count(&amp;total)</pre>
+</div>
+
+<div class="tarjeta t-db">
+  <h2>UnitOfWork + txOrDB</h2>
+<pre>err := s.uow.Do(ctx, func(ctx context.Context) error {
+  if err := s.writer.Insertar(ctx, a); err != nil { return err }
+  return s.otro.Insertar(ctx, b)      <span class="c">// misma transacción (va en ctx)</span>
+})</pre>
+  <ul>
+    <li><code>Do</code> <b>commitea</b> si <code>fn</code> devuelve <code>nil</code>: un <code>return nil</code> temprano persiste lo hecho. Para abortar sin error al cliente: centinela + <code>IsCode</code> fuera del <code>Do</code>.</li>
+    <li><code>Do</code> anidado = transacción <b>independiente</b>, no savepoint. Abre una sola vez arriba.</li>
+    <li>Los adaptadores siempre usan <code>txOrDB(ctx, r.db)</code>.</li>
+  </ul>
+</div>
+
+<div class="tarjeta t-db">
+  <h2>Migraciones y Postgres</h2>
+<pre>go run &lt;main&gt;.go migrate status      <span class="c"># permitido: solo lee</span>
+go run &lt;main&gt;.go migrate up          <span class="c"># SOLO en tu base local / práctica</span>
+migrate create -ext sql -dir migrations -seq &lt;nombre&gt; <span class="c"># golang-migrate</span></pre>
+  <ul>
+    <li>SQL embebido (<code>//go:embed</code>): un <code>.sql</code> nuevo no existe hasta recompilar.</li>
+    <li>Escribe SQL para la versión de Postgres del <b>servidor</b>, no la de tu laptop (p. ej. <code>CREATE OR REPLACE TRIGGER</code> requiere PG 14+).</li>
+    <li>Una migración aplicada <b>no se edita</b>: se crea otra. FKs con <code>REFERENCES</code> + índice.</li>
+    <li>Bases expuestas suelen exigir TLS (<code>pg_hba</code> con <code>hostssl</code>): <code>sslmode=verify-full</code> + certificados.</li>
+  </ul>
+<pre>psql "host=127.0.0.1 port=5433 user=dojo dbname=dojo"
+\dt  \d tabla  \x  \q
+SELECT ... FROM a LEFT JOIN b ON b.a_id = a.id WHERE ... GROUP BY ... ORDER BY ... LIMIT 20;</pre>
+</div>
+
+<!-- =============================== DOCKER ================================= -->
+<div class="tarjeta t-docker">
+  <h2>Docker y Compose</h2>
+<pre>docker ps -a; docker images; docker logs -f --tail 100 &lt;c&gt;
+docker exec -it &lt;c&gt; sh
+docker build -t nombre:tag .
+docker compose up -d [servicio]      <span class="c"># --build para reconstruir</span>
+docker compose ps / logs -f api / restart api
+docker compose exec dbpostgres psql -U &lt;u&gt;
+docker compose down                  <span class="c"># conserva volúmenes</span>
+docker compose down -v               <span class="c"># BORRA volúmenes (solo práctica)</span></pre>
+  <ul>
+    <li><code>ports: "127.0.0.1:5433:5432"</code> = <b>HOST:CONTENEDOR</b>; <code>127.0.0.1</code> no expone a la red.</li>
+    <li>Contenedor a contenedor: <b>alias + puerto interno</b>. Tu máquina: <b>puerto publicado</b>.</li>
+    <li>Multi-stage: <code>golang</code> compila, <code>debian:12-slim</code>/<code>distroless</code> ejecuta; la imagen <b>no trae</b> <code>config.json</code> (se monta).</li>
+    <li><code>failed to connect to the docker API</code> = Docker no está corriendo.</li>
+    <li>Contenedor reinicia en bucle: <code>docker logs --tail 100</code> y busca el <code>Fatal</code> (config, Postgres, red).</li>
+  </ul>
+</div>
+
+<!-- =============================== HEXAGONAL ================================= -->
+<div class="tarjeta t-arq">
+  <h2>Arquitectura hexagonal</h2>
+  <table data-w="44,56">
+    <tr><th>Carpeta</th><th>Qué va</th></tr>
+    <tr><td><code>domain/models</code></td><td>Entidades</td></tr>
+    <tr><td><code>domain/repositories</code></td><td>Puertos <code>…Reader</code>/<code>…Writer</code>, <code>UnitOfWork</code></td></tr>
+    <tr><td><code>domain/services</code></td><td>Interfaz + <code>…Impl</code>: lógica de negocio</td></tr>
+    <tr><td><code>infrastructure/persistence</code></td><td>Adaptadores GORM, <code>txOrDB</code></td></tr>
+    <tr><td><code>infrastructure/web/…</code></td><td><code>controllers</code> <code>dtos</code> <code>mappers</code> <code>routes</code></td></tr>
+    <tr><td><code>infrastructure/external</code></td><td>Otros servicios, Auth0, casbin, APIs</td></tr>
+    <tr><td><code>infrastructure/messaging</code></td><td>Rabbit, <code>LISTEN</code>, websocket</td></tr>
+    <tr><td><code>infrastructure/app/app.go</code></td><td><b>Composition root</b>: único lugar que cablea</td></tr>
+  </table>
+  <div class="alerta">Dominio <b>no importa</b> gin, gorm ni <code>infrastructure</code>. Lo vigila <code>src/architecture_test.go</code>.</div>
+  <h3>Receta: operación nueva</h3>
+  <p>1 puerto (si hace falta) · 2 service (interfaz + Impl, valida, <code>uow.Do</code> si &gt;1 escritura) · 3 test con fake · 4 adaptador(es) · 5 DTO -&gt; mapper -&gt; handler + swagger -&gt; ruta <b>después</b> del middleware · 6 cableado en <code>app.go</code> · 7 <code>swag init</code>, build, vet, fmt, test, <code>curl</code>.</p>
+  <h3>Nombres</h3>
+  <p>Rol en inglés (<code>Reader</code>, <code>Service</code>, <code>Impl</code>), negocio en español (<code>Almacen</code>, <code>PorID</code>, <code>Insertar</code>). Los nombres en español <b>no se renombran</b> (contrato JSON, rutas, columnas). Un concepto = <b>mismo nombre de archivo</b> en todas las capas.</p>
+</div>
+
+<!-- =============================== LIBRERÍA COMPARTIDA ================================= -->
+<div class="tarjeta t-arq">
+  <h2>Errores estilo librería interna (<code>pkg/apperr</code>)</h2>
+<pre>return nil, apperr.New(http.StatusNotFound, "El almacén no existe", err)
+return nil, apperr.Wrap(err)                 <span class="c">// entre capas</span>
+if apperr.IsCode(err, http.StatusNotFound) { } <span class="c">// decidir</span>
+apperr.Response(err, ctx)                     <span class="c">// error del service</span>
+apperr.CtrlResponse(400, msg, err, ctx)       <span class="c">// error del borde HTTP</span>
+log.Printf("código %d: %v", apperr.Code(err), err)</pre>
+  <div class="alerta">
+    <b>4 trampas típicas</b> (el dojo las trae a propósito):<br>
+    1. <code>AppError</code> <b>no tiene <code>Unwrap()</code></b>: <code>errors.Is</code> no ve la causa -&gt; usa <code>IsCode</code>.<br>
+    2. <code>apperr.Wrap(nil)</code> <b>no es nil</b>: si absorbes not-found, <code>return nil, nil</code> explícito.<br>
+    3. <code>apperr.New(code, msg, nil)</code> <b>revienta al responder</b>: siempre causa (<code>errors.New(msg)</code>).<br>
+    4. Nunca <code>return err</code> crudo entre paquetes.
+  </div>
+</div>
+
+<div class="tarjeta t-arq">
+  <h2>Librería compartida: config, auth, ecosistema</h2>
+  <ul>
+    <li><b>Módulo privado:</b> <code>go env -w GOPRIVATE=github.com/tu-org/*</code> + credencial git (SSH o token). Versiona con <b>semver</b> y tags <code>vX.Y.Z</code>.</li>
+    <li>Probar cambios sin publicar: <code>replace github.com/tu-org/libs =&gt; ../libs</code> en <code>go.mod</code> (<b>nunca</b> en commit) o <code>go work</code>.</li>
+    <li><b>config:</b> si la librería cae en una config de prueba cuando no encuentra el archivo, <b>no falla</b>: lee el log de arranque si "no ves tus datos".</li>
+    <li><b>auth:</b> JWT + autorización por rol (p. ej. casbin). <b>Ruta nueva = 403</b> hasta darle permiso en <b>cada entorno</b>.</li>
+    <li><b>Token servicio a servicio</b> (<code>X-App-Token</code>): solo entre tus servicios, <b>nunca</b> hacia terceros. Cliente HTTP siempre con timeout.</li>
+    <li>Parsear <code>Authorization</code> con <code>strings.Cut</code>, no <code>Split(...)[1]</code> (panic = 500 en vez de 401).</li>
+    <li><b>Trace:</b> TraceID viaja en el <code>ctx</code>; pásalo siempre.</li>
+    <li><b>Shutdown:</b> cada tarea en segundo plano respeta <code>ctx.Done()</code>.</li>
+    <li>Leer el código de una dependencia: <code>$(go env GOMODCACHE)/&lt;módulo&gt;@&lt;versión&gt;/</code> o <code>go doc</code>.</li>
+  </ul>
+</div>
+
+<!-- =============================== SEGURIDAD ================================= -->
+<div class="tarjeta t-seg">
+  <h2>Seguridad y secretos</h2>
+  <table>
+    <tr><th>Secreto</th><th>Vive en</th></tr>
+    <tr><td>Contraseñas BD/Rabbit</td><td><code>config.json</code> (ignorado) · gestor de secretos / variables del pipeline</td></tr>
+    <tr><td>Certificados</td><td><code>certs/&lt;entorno&gt;/</code> (ignorado)</td></tr>
+    <tr><td><code>JWT_SECRET</code>, <code>DOJO_TOKEN</code></td><td><code>.env</code> del servidor (ignorado)</td></tr>
+    <tr><td>Llaves privadas, API keys</td><td>variables de entorno / vault</td></tr>
+  </table>
+  <ul>
+    <li>SQL siempre con <code>?</code> · timeouts en todo I/O externo · <code>subtle.ConstantTimeCompare</code> para tokens · no loguear headers <code>Authorization</code> ni configs completos.</li>
+    <li>Ruta expuesta = registrada antes del middleware de auth. Congela el inventario de rutas públicas con un test.</li>
+    <li>Nodo nuevo en config -&gt; también en <code>config.example.json</code> con placeholder.</li>
+  </ul>
+</div>
+
+<!-- =============================== PROCESO ================================= -->
+<div class="tarjeta t-arq">
+  <h2>Proceso: del ticket a producción</h2>
+  <p><b>Ticket</b> -&gt; rama <code>feature/&lt;ticket&gt;-slug</code> -&gt; código + tests + swagger + migración -&gt; verificación local -&gt; PR (CI: build, vet, test, lint) -&gt; revisión + QA en <b>staging</b> -&gt; merge -&gt; pipeline despliega a <b>production</b>.</p>
+<pre><span class="c"># .github/workflows/ci.yml (esqueleto)</span>
+on: [pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod }
+      - run: go vet ./... &amp;&amp; go test -race ./...</pre>
+  <h3>Checklist antes de desplegar</h3>
+  <ul>
+    <li>Ruta nueva -&gt; permisos/roles en cada entorno.</li>
+    <li>Llave nueva de config -&gt; <code>config.example.json</code> + config de cada entorno <b>antes</b> del código.</li>
+    <li>Migración -&gt; quién y cuándo se aplica en producción: coordínalo.</li>
+  </ul>
+  <h3>PR que se revisa rápido</h3>
+  <p>Título <code>feat(cajas): alta de cajas (#123)</code> · qué y por qué · <b>cómo se probó</b> (comandos + <code>curl</code>; si no pudiste ejercitarlo, dilo) · riesgos · pasos de despliegue. Verificación: <code>go build ./...</code> · <code>go vet ./...</code> · <code>gofmt -l .</code> · <code>go test ./...</code>.</p>
+</div>
+
+<!-- =============================== ERRORES COMUNES ================================= -->
+<div class="tarjeta t-seg">
+  <h2>Error -&gt; solución</h2>
+  <table data-w="58,42">
+    <tr><th>Mensaje</th><th>Arreglo</th></tr>
+    <tr><td><code>410 Gone</code> / <code>proxy.golang.org …tu-org/libs</code></td><td><code>GOPRIVATE</code></td></tr>
+    <tr><td><code>Node.js environment variables are disabled…</code></td><td>VS Code: off <code>git.terminalAuthentication</code> o <code>GIT_ASKPASS=</code></td></tr>
+    <tr><td><code>terminal prompts disabled</code></td><td><code>git ls-remote</code> una vez para guardar credencial</td></tr>
+    <tr><td><code>no required module provides package …/docs</code></td><td><code>swag init -g &lt;main&gt;.go</code></td></tr>
+    <tr><td><code>swag: command not found</code></td><td><code>~/go/bin</code> al <code>PATH</code></td></tr>
+    <tr><td><code>unknown field LeftDelim</code></td><td><code>swag</code> en versión de <code>go.mod</code></td></tr>
+    <tr><td><code>lookup dbpostgres: no such host</code></td><td>alias docker -&gt; host público</td></tr>
+    <tr><td><code>no pg_hba.conf entry … SSL off</code></td><td><code>sslmode</code> + certs</td></tr>
+    <tr><td><code>private key file has group or world access</code></td><td><code>chmod 600 client.key</code></td></tr>
+    <tr><td><code>certificate is valid for X, not Y</code></td><td>host del SAN o <code>verify-ca</code></td></tr>
+    <tr><td><code>certificate signed by unknown authority</code></td><td><code>ca.crt</code> del entorno correcto</td></tr>
+    <tr><td><code>certificate authentication failed for user</code></td><td>CN de <code>client.crt</code> = usuario</td></tr>
+    <tr><td><code>i/o timeout</code></td><td><code>nc -vz</code>; si falla, no es tu código</td></tr>
+    <tr><td><code>bind: address already in use</code></td><td><code>lsof -i :&lt;puerto&gt;</code></td></tr>
+    <tr><td>403 en ruta nueva</td><td>permiso/rol en ese entorno</td></tr>
+        <tr><td>"usando config por defecto" en el log</td><td>ruta de <code>CONFIG</code> mal</td></tr>
+    <tr><td><code>invalid transaction</code> en todo</td><td>alguien hizo <code>Rollback()</code> en la raíz: reiniciar y corregir</td></tr>
+    <tr><td><code>concurrent map writes</code></td><td><code>Mutex</code>; corre <code>-race</code></td></tr>
+      </table>
+</div>
+
+<!-- =============================== DOJO ================================= -->
+<div class="tarjeta t-dojo">
+  <h2>Dojo <small>(Claude Code en la raíz del repo)</small></h2>
+  <table data-w="28,72">
+    <tr><td><code>/progreso</code></td><td>bitácora y qué sigue</td></tr>
+    <tr><td><code>/pista</code></td><td>pista de 3 niveles, sin solución</td></tr>
+    <tr><td><code>/revisar-reto</code></td><td>tests + revisión estilo PR</td></tr>
+    <tr><td><code>/examen</code></td><td>autoevaluación del módulo</td></tr>
+  </table>
+<pre><span class="c"># katas (practica/katas)</span>
+go test ./basico/ -v
+go test ./intermedio/ -race -v
+<span class="c"># dojo-api (practica/dojo-api) · :1099 · token dojo-local-inseguro</span>
+swag init -g main.go &amp;&amp; go test ./... &amp;&amp; go run main.go
+go test -tags reto_seguridad ./src/infrastructure/app/ -run Reto -v  <span class="c"># A · mód 04</span>
+go test -tags reto_desactivar ./... -run Reto -v                     <span class="c"># B · mód 08</span>
+go test -tags reto_caja ./... -run Reto -v                           <span class="c"># C · mód 12</span>
+docker compose up -d dbpostgres   <span class="c"># 127.0.0.1:5433 / dbpostgres:5432</span>
+go run main.go migrate status|up</pre>
+  <p>Cinturones: blanco 00–01 · amarillo 02–03 · naranja 04–05 · verde 06–07 · azul 08–09 · café 10–11 · negro 12.</p>
+</div>
+
+<div class="tarjeta">
+  <h2>Antes de decir "ya quedó"</h2>
+  <div class="ok">
+    <code>swag init -g &lt;main&gt;.go</code> (si tocaste handlers/DTOs)<br>
+    <code>go build ./...</code> · <code>go vet ./...</code> · <code>gofmt -l .</code> (vacío)<br>
+    <code>go test ./... -race</code> (lee con <code>-v</code> si hay Skip)<br>
+    <code>curl</code> al endpoint (local, sin escribir en bases compartidas)<br>
+    <code>git status</code>: sin <code>config.json</code>, <code>certs/</code>, <code>.env</code>, <code>docs/</code>, binarios<br>
+    Rutas nuevas después del middleware · permisos anotados para el despliegue<br>
+    Lista vacía sale <code>[]</code>, no <code>null</code><br>
+    Errores: sin <code>return err</code> crudo, sin <code>Wrap(nil)</code>, sin <code>New(…, nil)</code>
+  </div>
+</div>
+
+</div>
+</body>
+</html>

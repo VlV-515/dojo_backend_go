@@ -1,0 +1,53 @@
+# Compose del dojo: una base Postgres y la API, en la red dojonet.
+#
+#   docker compose up -d dbpostgres        # solo la base (para correr la API con go run)
+#   docker compose up -d --build           # base + API en contenedor
+#   docker compose ps / logs -f api / down
+#
+# Dos formas de llegar a la MISMA base, como en cualquier servidor con Docker:
+#   - Desde tu Mac:            127.0.0.1:5433   (puerto publicado)
+#   - Desde otro contenedor:   dbpostgres:5432  (alias en la red dojonet)
+# Por eso, cuando corres un servicio en tu máquina contra un servidor remoto,
+# tienes que cambiar el alias (dbpostgres:5432) por el host y puerto públicos.
+
+services:
+  dbpostgres:
+    image: postgres:16-alpine
+    container_name: dojo-pg
+    environment:
+      POSTGRES_USER: dojo
+      POSTGRES_PASSWORD: dojo      # credencial de práctica, solo local
+      POSTGRES_DB: dojo
+    ports:
+      - "127.0.0.1:5433:5432"      # 5433 para no chocar con un Postgres local en 5432
+    volumes:
+      - dojo-pgdata:/var/lib/postgresql/data
+    networks:
+      dojonet:
+        aliases: [dbpostgres]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dojo -d dojo"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: .
+    container_name: dojo-api
+    depends_on:
+      dbpostgres:
+        condition: service_healthy
+    environment:
+      CONFIG: /app/config.json
+      DOJO_TOKEN: ${DOJO_TOKEN:-dojo-local-inseguro}
+    volumes:
+      - ./docker/configs/config_dojo_api.json:/app/config.json:ro
+    ports:
+      - "127.0.0.1:1099:1099"
+    networks:
+      - dojonet
+
+volumes:
+  dojo-pgdata:
+
+networks:
+  dojonet:

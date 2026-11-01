@@ -1,0 +1,13 @@
+# Bitácora personal del alumno y ajustes locales de Claude Code
+/progreso.local.md
+/CLAUDE.local.md
+/.claude/settings.local.json
+
+# Sistema operativo / editores
+.DS_Store
+.idea/
+.vscode/
+
+# Cheatsheet: entorno de generación
+/recursos/cheatsheet/.venv/
+__pycache__/

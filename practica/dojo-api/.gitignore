@@ -1,0 +1,7 @@
+# Generados: no se versionan
+/docs/
+/dojo-api
+*.log
+
+# Config real (la plantilla es config.example.json)
+config.json

@@ -1,0 +1,14 @@
+{
+  "nombre": "dojo-api",
+  "puerto": 1099,
+  "persistencia": "memoria",
+  "auto_migrate_on_boot": false,
+  "postgres": {
+    "host": "127.0.0.1",
+    "port": 5433,
+    "user": "dojo",
+    "password": "<password-de-docker-compose>",
+    "dbname": "dojo",
+    "sslmode": "disable"
+  }
+}

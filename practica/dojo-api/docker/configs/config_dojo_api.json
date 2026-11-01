@@ -1,0 +1,14 @@
+{
+  "nombre": "dojo-api",
+  "puerto": 1099,
+  "persistencia": "postgres",
+  "auto_migrate_on_boot": true,
+  "postgres": {
+    "host": "dbpostgres",
+    "port": 5432,
+    "user": "dojo",
+    "password": "dojo",
+    "dbname": "dojo",
+    "sslmode": "disable"
+  }
+}

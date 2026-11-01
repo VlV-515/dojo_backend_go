@@ -1,0 +1,595 @@
+diff --color -ruN a/dojo-api/src/domain/models/caja.go b/dojo-api/src/domain/models/caja.go
+--- a/dojo-api/src/domain/models/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/domain/models/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,17 @@
++package models
++
++import "time"
++
++// Caja es una caja de cobro que pertenece a un almacén.
++type Caja struct {
++	ID        uint `gorm:"primaryKey"`
++	Nombre    string
++	AlmacenID uint
++	Abierta   bool
++	CreatedAt time.Time
++	UpdatedAt time.Time
++}
++
++func (Caja) TableName() string {
++	return "caja"
++}
+diff --color -ruN a/dojo-api/src/domain/repositories/caja.go b/dojo-api/src/domain/repositories/caja.go
+--- a/dojo-api/src/domain/repositories/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/domain/repositories/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,18 @@
++package repositories
++
++import (
++	"context"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++)
++
++// CajaReader lee cajas.
++type CajaReader interface {
++	// PorAlmacen devuelve las cajas del almacén ordenadas por id.
++	PorAlmacen(ctx context.Context, almacenID uint) ([]models.Caja, error)
++}
++
++// CajaWriter escribe cajas.
++type CajaWriter interface {
++	Insertar(ctx context.Context, caja *models.Caja) error
++}
+diff --color -ruN a/dojo-api/src/domain/services/almacen.go b/dojo-api/src/domain/services/almacen.go
+--- a/dojo-api/src/domain/services/almacen.go	2026-11-01 16:13:54
++++ b/dojo-api/src/domain/services/almacen.go	2026-11-01 16:13:54
+@@ -29,6 +29,8 @@
+ 	Registrar(ctx context.Context, almacen *models.Almacen) error
+ 	// Actualizar solo cambia el nombre.
+ 	Actualizar(ctx context.Context, almacen *models.Almacen) error
++	// Desactivar responde 409 si ya estaba inactivo.
++	Desactivar(ctx context.Context, id uint) error
+ }
+ 
+ type AlmacenServiceImpl struct {
+@@ -102,5 +104,20 @@
+ 		return apperr.Wrap(err)
+ 	}
+ 	*almacen = *guardado
++	return nil
++}
++
++func (s *AlmacenServiceImpl) Desactivar(ctx context.Context, id uint) error {
++	guardado, err := s.reader.PorID(ctx, id)
++	if err != nil {
++		return apperr.Wrap(err)
++	}
++	if !guardado.Activo {
++		return apperr.New(http.StatusConflict, "El almacén ya está inactivo", errors.New("almacén inactivo"))
++	}
++	guardado.Activo = false
++	if err := s.writer.Actualizar(ctx, guardado); err != nil {
++		return apperr.Wrap(err)
++	}
+ 	return nil
+ }
+diff --color -ruN a/dojo-api/src/domain/services/caja.go b/dojo-api/src/domain/services/caja.go
+--- a/dojo-api/src/domain/services/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/domain/services/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,54 @@
++package services
++
++import (
++	"context"
++	"strings"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/pkg/apperr"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/repositories"
++)
++
++var _ CajaService = (*CajaServiceImpl)(nil)
++
++const msgCajaNombre = "El campo nombre es requerido"
++
++// CajaService orquesta las cajas de cada almacén.
++type CajaService interface {
++	PorAlmacen(ctx context.Context, almacenID uint) ([]models.Caja, error)
++	// Registrar responde 404 si el almacén no existe.
++	Registrar(ctx context.Context, caja *models.Caja) error
++}
++
++type CajaServiceImpl struct {
++	reader   repositories.CajaReader
++	writer   repositories.CajaWriter
++	almacens repositories.AlmacenReader
++}
++
++func NewCajaService(reader repositories.CajaReader, writer repositories.CajaWriter, almacenes repositories.AlmacenReader) *CajaServiceImpl {
++	return &CajaServiceImpl{reader: reader, writer: writer, almacens: almacenes}
++}
++
++func (s *CajaServiceImpl) PorAlmacen(ctx context.Context, almacenID uint) ([]models.Caja, error) {
++	cajas, err := s.reader.PorAlmacen(ctx, almacenID)
++	if err != nil {
++		return nil, apperr.Wrap(err)
++	}
++	return cajas, nil
++}
++
++func (s *CajaServiceImpl) Registrar(ctx context.Context, caja *models.Caja) error {
++	caja.Nombre = strings.TrimSpace(caja.Nombre)
++	if caja.Nombre == "" {
++		return badRequest(msgCajaNombre)
++	}
++	if _, err := s.almacens.PorID(ctx, caja.AlmacenID); err != nil {
++		return apperr.Wrap(err)
++	}
++	caja.Abierta = false
++	if err := s.writer.Insertar(ctx, caja); err != nil {
++		return apperr.Wrap(err)
++	}
++	return nil
++}
+diff --color -ruN a/dojo-api/src/infrastructure/app/app.go b/dojo-api/src/infrastructure/app/app.go
+--- a/dojo-api/src/infrastructure/app/app.go	2026-11-01 16:13:54
++++ b/dojo-api/src/infrastructure/app/app.go	2026-11-01 16:13:54
+@@ -29,6 +29,7 @@
+ 
+ 	almacenCtrl *controllers.AlmacenController
+ 	saludCtrl   *controllers.SaludController
++	cajaCtrl    *controllers.CajaController
+ }
+ 
+ // New elige la persistencia según el config y arma el grafo. No registra rutas.
+@@ -39,6 +40,8 @@
+ 		almacenReader repositories.AlmacenReader
+ 		almacenWriter repositories.AlmacenWriter
+ 		uow           repositories.UnitOfWork
++		cajaReader    repositories.CajaReader
++		cajaWriter    repositories.CajaWriter
+ 	)
+ 
+ 	switch cfg.Persistencia {
+@@ -51,10 +54,14 @@
+ 		repo := postgres.NewAlmacenRepository(db)
+ 		almacenReader, almacenWriter = repo, repo
+ 		uow = postgres.NewUnitOfWork(db)
++		cajas := postgres.NewCajaRepository(db)
++		cajaReader, cajaWriter = cajas, cajas
+ 	case "memoria", "":
+ 		repo := memoria.NewAlmacenRepository()
+ 		almacenReader, almacenWriter = repo, repo
+ 		uow = memoria.UnitOfWork{}
++		cajas := memoria.NewCajaRepository()
++		cajaReader, cajaWriter = cajas, cajas
+ 	default:
+ 		return nil, fmt.Errorf("persistencia desconocida %q (usa memoria o postgres)", cfg.Persistencia)
+ 	}
+@@ -63,6 +70,7 @@
+ 
+ 	a.almacenCtrl = controllers.NewAlmacenController(almacenService)
+ 	a.saludCtrl = controllers.NewSaludController(cfg.Persistencia)
++	a.cajaCtrl = controllers.NewCajaController(services.NewCajaService(cajaReader, cajaWriter, almacenReader))
+ 
+ 	a.router = gin.New()
+ 	a.router.Use(gin.Logger(), gin.Recovery())
+@@ -98,7 +106,6 @@
+ func (a *App) ArmarRouter() {
+ 	// Públicas
+ 	routes.RutasSalud(a.router, a.saludCtrl)
+-	routes.RutasReportes(a.router, a.almacenCtrl)
+ 
+ 	// ======================== AUTENTICACIÓN ========================
+ 	a.router.Use(middleware.Autenticar(a.cfg.Token))
+@@ -106,6 +113,8 @@
+ 
+ 	// Protegidas
+ 	routes.RutasAlmacenes(a.router, a.almacenCtrl)
++	routes.RutasReportes(a.router, a.almacenCtrl)
++	routes.RutasCajas(a.router, a.cajaCtrl)
+ }
+ 
+ // Run escucha en el puerto del config.
+diff --color -ruN a/dojo-api/src/infrastructure/app/app.go.orig b/dojo-api/src/infrastructure/app/app.go.orig
+--- a/dojo-api/src/infrastructure/app/app.go.orig	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/app/app.go.orig	2026-11-01 16:13:54
+@@ -0,0 +1,114 @@
++// Package app es el COMPOSITION ROOT: el único lugar donde se eligen adaptadores y
++// se cablean repositorios -> services -> controllers.
++package app
++
++import (
++	"context"
++	"fmt"
++	"log"
++
++	"github.com/gin-gonic/gin"
++	"gorm.io/gorm"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/config"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/repositories"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/services"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/database"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/persistence/memoria"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/persistence/postgres"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/controllers"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/middleware"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/routes"
++)
++
++// App guarda el grafo de dependencias ya armado.
++type App struct {
++	cfg    config.Config
++	router *gin.Engine
++	db     *gorm.DB
++
++	almacenCtrl *controllers.AlmacenController
++	saludCtrl   *controllers.SaludController
++}
++
++// New elige la persistencia según el config y arma el grafo. No registra rutas.
++func New(cfg config.Config) (*App, error) {
++	a := &App{cfg: cfg}
++
++	var (
++		almacenReader repositories.AlmacenReader
++		almacenWriter repositories.AlmacenWriter
++		uow           repositories.UnitOfWork
++	)
++
++	switch cfg.Persistencia {
++	case "postgres":
++		db, err := postgres.Abrir(cfg.Postgres)
++		if err != nil {
++			return nil, err
++		}
++		a.db = db
++		repo := postgres.NewAlmacenRepository(db)
++		almacenReader, almacenWriter = repo, repo
++		uow = postgres.NewUnitOfWork(db)
++	case "memoria", "":
++		repo := memoria.NewAlmacenRepository()
++		almacenReader, almacenWriter = repo, repo
++		uow = memoria.UnitOfWork{}
++	default:
++		return nil, fmt.Errorf("persistencia desconocida %q (usa memoria o postgres)", cfg.Persistencia)
++	}
++
++	almacenService := services.NewAlmacenService(almacenReader, almacenWriter, uow)
++
++	a.almacenCtrl = controllers.NewAlmacenController(almacenService)
++	a.saludCtrl = controllers.NewSaludController(cfg.Persistencia)
++
++	a.router = gin.New()
++	a.router.Use(gin.Logger(), gin.Recovery())
++	return a, nil
++}
++
++// Router expone el *gin.Engine para que main registre lo suyo (swagger).
++func (a *App) Router() *gin.Engine {
++	return a.router
++}
++
++// DB es nil con persistencia en memoria.
++func (a *App) DB() *gorm.DB {
++	return a.db
++}
++
++// RunMigrations aplica las migraciones al arrancar solo si auto_migrate_on_boot
++// es true. Contra una base compartida (pruebas/desarrollo) SIEMPRE false.
++func (a *App) RunMigrations(_ context.Context) error {
++	if a.db == nil || !a.cfg.AutoMigrateOnBoot {
++		return nil
++	}
++	n, err := database.Up(a.db)
++	if err != nil {
++		return err
++	}
++	log.Printf("[migraciones] aplicadas al arrancar: %d", n)
++	return nil
++}
++
++// ArmarRouter registra las rutas. EL ORDEN ES LOAD-BEARING: lo que se registra
++// antes de Autenticar queda público; lo de después exige token.
++func (a *App) ArmarRouter() {
++	// Públicas
++	routes.RutasSalud(a.router, a.saludCtrl)
++	routes.RutasReportes(a.router, a.almacenCtrl)
++
++	// ======================== AUTENTICACIÓN ========================
++	a.router.Use(middleware.Autenticar(a.cfg.Token))
++	// ===============================================================
++
++	// Protegidas
++	routes.RutasAlmacenes(a.router, a.almacenCtrl)
++}
++
++// Run escucha en el puerto del config.
++func (a *App) Run() error {
++	return a.router.Run(fmt.Sprintf(":%d", a.cfg.Puerto))
++}
+diff --color -ruN a/dojo-api/src/infrastructure/database/migrations/0002_caja.up.sql b/dojo-api/src/infrastructure/database/migrations/0002_caja.up.sql
+--- a/dojo-api/src/infrastructure/database/migrations/0002_caja.up.sql	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/database/migrations/0002_caja.up.sql	2026-11-01 16:13:54
+@@ -0,0 +1,10 @@
++CREATE TABLE IF NOT EXISTS caja (
++    id         serial       PRIMARY KEY,
++    nombre     varchar(80)  NOT NULL,
++    almacen_id integer      NOT NULL REFERENCES almacen (id),
++    abierta    boolean      NOT NULL DEFAULT false,
++    created_at timestamptz  NOT NULL DEFAULT now(),
++    updated_at timestamptz  NOT NULL DEFAULT now()
++);
++
++CREATE INDEX IF NOT EXISTS caja_almacen_id_idx ON caja (almacen_id);
+diff --color -ruN a/dojo-api/src/infrastructure/persistence/memoria/caja.go b/dojo-api/src/infrastructure/persistence/memoria/caja.go
+--- a/dojo-api/src/infrastructure/persistence/memoria/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/persistence/memoria/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,50 @@
++package memoria
++
++import (
++	"context"
++	"sort"
++	"sync"
++	"time"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/repositories"
++)
++
++var (
++	_ repositories.CajaReader = (*CajaRepositoryImpl)(nil)
++	_ repositories.CajaWriter = (*CajaRepositoryImpl)(nil)
++)
++
++type CajaRepositoryImpl struct {
++	mu        sync.Mutex
++	siguiente uint
++	cajas     map[uint]models.Caja
++}
++
++func NewCajaRepository() *CajaRepositoryImpl {
++	return &CajaRepositoryImpl{siguiente: 1, cajas: map[uint]models.Caja{}}
++}
++
++func (r *CajaRepositoryImpl) PorAlmacen(_ context.Context, almacenID uint) ([]models.Caja, error) {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	lista := []models.Caja{}
++	for _, c := range r.cajas {
++		if c.AlmacenID == almacenID {
++			lista = append(lista, c)
++		}
++	}
++	sort.Slice(lista, func(i, j int) bool { return lista[i].ID < lista[j].ID })
++	return lista, nil
++}
++
++func (r *CajaRepositoryImpl) Insertar(_ context.Context, caja *models.Caja) error {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	ahora := time.Now()
++	caja.ID = r.siguiente
++	caja.CreatedAt, caja.UpdatedAt = ahora, ahora
++	r.cajas[caja.ID] = *caja
++	r.siguiente++
++	return nil
++}
+diff --color -ruN a/dojo-api/src/infrastructure/persistence/postgres/caja.go b/dojo-api/src/infrastructure/persistence/postgres/caja.go
+--- a/dojo-api/src/infrastructure/persistence/postgres/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/persistence/postgres/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,40 @@
++package postgres
++
++import (
++	"context"
++	"net/http"
++
++	"gorm.io/gorm"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/pkg/apperr"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/repositories"
++)
++
++var (
++	_ repositories.CajaReader = (*CajaRepositoryImpl)(nil)
++	_ repositories.CajaWriter = (*CajaRepositoryImpl)(nil)
++)
++
++type CajaRepositoryImpl struct {
++	db *gorm.DB
++}
++
++func NewCajaRepository(db *gorm.DB) *CajaRepositoryImpl {
++	return &CajaRepositoryImpl{db: db}
++}
++
++func (r *CajaRepositoryImpl) PorAlmacen(ctx context.Context, almacenID uint) ([]models.Caja, error) {
++	cajas := []models.Caja{}
++	if err := txOrDB(ctx, r.db).Where("almacen_id = ?", almacenID).Order("id").Find(&cajas).Error; err != nil {
++		return nil, apperr.New(http.StatusInternalServerError, "No fue posible consultar cajas debido a un error interno", err)
++	}
++	return cajas, nil
++}
++
++func (r *CajaRepositoryImpl) Insertar(ctx context.Context, caja *models.Caja) error {
++	if err := txOrDB(ctx, r.db).Create(caja).Error; err != nil {
++		return apperr.New(http.StatusInternalServerError, "No fue posible crear la caja debido a un error interno", err)
++	}
++	return nil
++}
+diff --color -ruN a/dojo-api/src/infrastructure/web/controllers/almacen.go b/dojo-api/src/infrastructure/web/controllers/almacen.go
+--- a/dojo-api/src/infrastructure/web/controllers/almacen.go	2026-11-01 16:13:54
++++ b/dojo-api/src/infrastructure/web/controllers/almacen.go	2026-11-01 16:13:54
+@@ -161,3 +161,25 @@
+ 	}
+ 	w.Flush()
+ }
++
++// Desactiva godoc
++// @Summary     Desactiva un almacén
++// @Tags        almacenes
++// @Produce     json
++// @Security    BearerToken
++// @Param       id  path     int true "ID del almacén"
++// @Success     200 {object} general.Respuesta
++// @Failure     404 {object} dtos.RespuestaError
++// @Failure     409 {object} dtos.RespuestaError
++// @Router      /almacenes/{id}/desactivar [put]
++func (c *AlmacenController) Desactiva(ctx *gin.Context) {
++	id, ok := idDeRuta(ctx)
++	if !ok {
++		return
++	}
++	if err := c.almacenService.Desactivar(ctx.Request.Context(), id); err != nil {
++		apperr.Response(err, ctx)
++		return
++	}
++	general.Responder(http.StatusOK, "Almacén desactivado", nil, ctx)
++}
+diff --color -ruN a/dojo-api/src/infrastructure/web/controllers/caja.go b/dojo-api/src/infrastructure/web/controllers/caja.go
+--- a/dojo-api/src/infrastructure/web/controllers/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/web/controllers/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,73 @@
++package controllers
++
++import (
++	"errors"
++	"net/http"
++	"strconv"
++
++	"github.com/gin-gonic/gin"
++
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/pkg/apperr"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/pkg/general"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/services"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/dtos"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/mappers"
++)
++
++// CajaController expone /cajas.
++type CajaController struct {
++	cajaService services.CajaService
++}
++
++func NewCajaController(cajaService services.CajaService) *CajaController {
++	return &CajaController{cajaService: cajaService}
++}
++
++// GetPorAlmacen godoc
++// @Summary     Lista las cajas de un almacén
++// @Tags        cajas
++// @Produce     json
++// @Security    BearerToken
++// @Param       almacen_id query    int true "ID del almacén"
++// @Success     200        {object} general.Respuesta
++// @Failure     400        {object} dtos.RespuestaError
++// @Router      /cajas [get]
++func (c *CajaController) GetPorAlmacen(ctx *gin.Context) {
++	almacenID, err := strconv.ParseUint(ctx.Query("almacen_id"), 10, 64)
++	if err != nil || almacenID == 0 {
++		apperr.CtrlResponse(http.StatusBadRequest, "El parámetro almacen_id es requerido", errors.New("almacen_id inválido"), ctx)
++		return
++	}
++	cajas, err := c.cajaService.PorAlmacen(ctx.Request.Context(), uint(almacenID))
++	if err != nil {
++		apperr.Response(err, ctx)
++		return
++	}
++	general.Responder(http.StatusOK, "Cajas consultadas", mappers.ToCajaDTOs(cajas), ctx)
++}
++
++// Alta godoc
++// @Summary     Registra una caja
++// @Tags        cajas
++// @Accept      json
++// @Produce     json
++// @Security    BearerToken
++// @Param       caja body     dtos.CajaAltaDTO true "Caja"
++// @Success     201  {object} general.Respuesta
++// @Failure     400  {object} dtos.RespuestaError
++// @Failure     404  {object} dtos.RespuestaError
++// @Router      /cajas [post]
++func (c *CajaController) Alta(ctx *gin.Context) {
++	var req dtos.CajaAltaDTO
++	if err := ctx.ShouldBindJSON(&req); err != nil {
++		apperr.CtrlResponse(http.StatusBadRequest, msgLeerDatos, err, ctx)
++		return
++	}
++	caja := models.Caja{Nombre: req.Nombre, AlmacenID: req.AlmacenID}
++	if err := c.cajaService.Registrar(ctx.Request.Context(), &caja); err != nil {
++		apperr.Response(err, ctx)
++		return
++	}
++	general.Responder(http.StatusCreated, "Caja registrada", mappers.ToCajaDTO(caja), ctx)
++}
+diff --color -ruN a/dojo-api/src/infrastructure/web/dtos/caja.go b/dojo-api/src/infrastructure/web/dtos/caja.go
+--- a/dojo-api/src/infrastructure/web/dtos/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/web/dtos/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,15 @@
++package dtos
++
++// CajaDTO es una caja tal como sale por la API.
++type CajaDTO struct {
++	ID        uint   `json:"id" example:"1"`
++	Nombre    string `json:"nombre" example:"Caja 1"`
++	AlmacenID uint   `json:"almacen_id" example:"1"`
++	Abierta   bool   `json:"abierta" example:"false"`
++}
++
++// CajaAltaDTO es el cuerpo de POST /cajas.
++type CajaAltaDTO struct {
++	Nombre    string `json:"nombre" binding:"required" example:"Caja 1"`
++	AlmacenID uint   `json:"almacen_id" binding:"required" example:"1"`
++}
+diff --color -ruN a/dojo-api/src/infrastructure/web/mappers/caja.go b/dojo-api/src/infrastructure/web/mappers/caja.go
+--- a/dojo-api/src/infrastructure/web/mappers/caja.go	1969-12-31 18:00:00
++++ b/dojo-api/src/infrastructure/web/mappers/caja.go	2026-11-01 16:13:54
+@@ -0,0 +1,18 @@
++package mappers
++
++import (
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/domain/models"
++	"github.com/VlV-515/dojo_backend_go/practica/dojo-api/src/infrastructure/web/dtos"
++)
++
++func ToCajaDTO(c models.Caja) dtos.CajaDTO {
++	return dtos.CajaDTO{ID: c.ID, Nombre: c.Nombre, AlmacenID: c.AlmacenID, Abierta: c.Abierta}
++}
++
++func ToCajaDTOs(cajas []models.Caja) []dtos.CajaDTO {
++	resultado := make([]dtos.CajaDTO, 0, len(cajas))
++	for _, c := range cajas {
++		resultado = append(resultado, ToCajaDTO(c))
++	}
++	return resultado
++}
+diff --color -ruN a/dojo-api/src/infrastructure/web/routes/almacen.go b/dojo-api/src/infrastructure/web/routes/almacen.go
+--- a/dojo-api/src/infrastructure/web/routes/almacen.go	2026-11-01 16:13:54
++++ b/dojo-api/src/infrastructure/web/routes/almacen.go	2026-11-01 16:13:54
+@@ -14,6 +14,7 @@
+ 		almacenes.POST("", ctrl.Alta)
+ 		almacenes.GET("/:id", ctrl.GetByID)
+ 		almacenes.PUT("/:id", ctrl.Actualiza)
++		almacenes.PUT("/:id/desactivar", ctrl.Desactiva)
+ 	}
+ }
+ 
+@@ -26,4 +27,12 @@
+ 
+ func RutasSalud(app *gin.Engine, ctrl *controllers.SaludController) {
+ 	app.GET("/salud", ctrl.Get)
++}
++
++func RutasCajas(app *gin.Engine, ctrl *controllers.CajaController) {
++	cajas := app.Group("cajas")
++	{
++		cajas.GET("", ctrl.GetPorAlmacen)
++		cajas.POST("", ctrl.Alta)
++	}
+ }
